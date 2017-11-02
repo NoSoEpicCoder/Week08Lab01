@@ -1,17 +1,19 @@
 package dataaccess;
 
 import domainmodel.Note;
-import java.sql.*;
 import java.time.*;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.persistence.EntityManager;
+import javax.persistence.EntityTransaction;
+import javax.persistence.NoResultException;
 
 public class NoteDB {
 
     public int insert(Note note) throws NotesDBException {
-        
+        EntityManager em = DBUtil.getEmFactory().createEntityManager();
+        EntityTransaction trans = em.getTransaction();
         
         Instant instant = note.getDateCreated().toInstant();
         ZoneId zoneid = ZoneId.of("America/Montreal");
@@ -19,128 +21,78 @@ public class NoteDB {
         LocalDate localDate = zdt.toLocalDate();
         
         try {
-            String preparedQuery = "INSERT INTO Note (noteId,dateCreated,contents VALUES (?, ?, ?)";
-            PreparedStatement ps = connection.prepareStatement(preparedQuery);
-            ps.setDate(1, java.sql.Date.valueOf(localDate));
-            ps.setString(2, note.getContents());
-           
-            int rows = ps.executeUpdate();
-            return rows;
-        } catch (SQLException ex) {
-            Logger.getLogger(NoteDB.class.getName()).log(Level.SEVERE, "Cannot insert " + note.toString(), ex);
+            trans.begin();
+            em.persist(note);
+            trans.commit();
+        } catch (Exception ex) {
+            trans.rollback();
+            Logger.getLogger(NoteDB.class.getName()).log(Level.SEVERE, "Cannot update " + note.toString(), ex);
             throw new NotesDBException("Error inserting user");
         } finally {
-            pool.freeConnection(connection);
+            em.close();
         }
+        return 0;
     }
 
     public int update(Note note) throws NotesDBException {
-        ConnectionPool pool = ConnectionPool.getInstance();
-        Connection connection = pool.getConnection();
+        EntityManager em = DBUtil.getEmFactory().createEntityManager();
+        EntityTransaction trans = em.getTransaction();
 
         try {
-            String preparedSQL = "UPDATE Note SET "
-                    + "contents = ?, "
-                    + "WHERE noteid = ?";
-
-            PreparedStatement ps = connection.prepareStatement(preparedSQL);
-
-            ps.setString(1, note.getContents());
-            ps.setInt(2, note.getNoteId());
-
-            int rows = ps.executeUpdate();
-            return rows;
-        } catch (SQLException ex) {
+            trans.begin();
+            em.merge(note);
+            trans.commit();
+        } catch (Exception ex) {
+            trans.rollback();
             Logger.getLogger(NoteDB.class.getName()).log(Level.SEVERE, "Cannot update " + note.toString(), ex);
             throw new NotesDBException("Error updating user");
         } finally {
-            pool.freeConnection(connection);
+            em.close();
         }
+        return 0;
     }
 
     public List<Note> getAll() throws NotesDBException {
-        ConnectionPool pool = ConnectionPool.getInstance();
-        Connection connection = pool.getConnection();
-
-        PreparedStatement ps = null;
-        ResultSet rs = null;
+        EntityManager em = DBUtil.getEmFactory().createEntityManager();
 
         try {
-            ps = connection.prepareStatement("SELECT * FROM Note;");
-            rs = ps.executeQuery();
-            List<Note> notes = new ArrayList<>();
-            while (rs.next()) {
-                notes.add(new Note(rs.getInt("noteid"), rs.getDate("dateCreated"), rs.getString("contents")));
-            }
-            pool.freeConnection(connection);
+            List<Note> notes = em.createNamedQuery("Note.findall", Note.class).getResultList();
             return notes;
-        } catch (SQLException ex) {
-            Logger.getLogger(NoteDB.class.getName()).log(Level.SEVERE, "Cannot read users", ex);
-            throw new NotesDBException("Error getting Users");
+        } catch (NoResultException ex) {
+            return null;
         } finally {
-            try {
-                rs.close();
-                ps.close();
-            } catch (SQLException ex) {
-            }
-            pool.freeConnection(connection);
+            em.close();
         }
     }
 
-    /**
-     * Get a single note by their noteId.
-     *
-     * @param username The unique noteId.
-     * @return A Note object if found, null otherwise.
-     * @throws NotesDBException
-     */
     public Note getNote(int noteId) throws NotesDBException {
-        ConnectionPool pool = ConnectionPool.getInstance();
-        Connection connection = pool.getConnection();
-        String selectSQL = "SELECT * FROM Note WHERE noteid = ?";
-        PreparedStatement ps = null;
-        ResultSet rs = null;
+        EntityManager em = DBUtil.getEmFactory().createEntityManager();
 
         try {
-            ps = connection.prepareStatement(selectSQL);
-            ps.setInt(1, noteId);
-            rs = ps.executeQuery();
-
-            Note note = null;
-            while (rs.next()) {
-                note = new Note(rs.getInt("noteid"), rs.getDate("dateCreated"), rs.getString("contents"));
-            }
-            pool.freeConnection(connection);
+            Note note = em.find(Note.class, noteId);
             return note;
-        } catch (SQLException ex) {
-            Logger.getLogger(NoteDB.class.getName()).log(Level.SEVERE, "Cannot read notes", ex);
-            throw new NotesDBException("Error getting Notes");
+        } catch (NoResultException ex) {
+            return null;
         } finally {
-            try {
-                rs.close();
-                ps.close();
-            } catch (SQLException ex) {
-            }
-            pool.freeConnection(connection);
+           em.close();
         }
     }
 
     public int delete(Note note) throws NotesDBException {
-        ConnectionPool pool = ConnectionPool.getInstance();
-        Connection connection = pool.getConnection();
-        String preparedQuery = "DELETE FROM Note WHERE noteid = ?";
-        PreparedStatement ps;
+        EntityManager em = DBUtil.getEmFactory().createEntityManager();
+        EntityTransaction trans = em.getTransaction();
 
         try {
-            ps = connection.prepareStatement(preparedQuery);
-            ps.setInt(1, note.getNoteId());
-            int rows = ps.executeUpdate();
-            return rows;
-        } catch (SQLException ex) {
+            trans.begin();
+            em.remove(note);
+            trans.commit();
+        } catch (Exception ex) {
+            trans.rollback();
             Logger.getLogger(NoteDB.class.getName()).log(Level.SEVERE, "Cannot delete " + note.toString(), ex);
             throw new NotesDBException("Error deleting Note");
         } finally {
-            pool.freeConnection(connection);
+            em.close();
         }
+        return 0;
     }
 }
